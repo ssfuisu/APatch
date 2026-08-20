@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     override fun onCreate(savedInstanceState: Bundle?) {
 
-        installSplashScreen().setKeepOnScreenCondition { isLoading }
+        installSplashScreen().setKeepOnScreenCondition { false }
 
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -148,8 +148,8 @@ class MainActivity : AppCompatActivity() {
                         }
                 }
 
-                LaunchedEffect(Unit) {
-                    if (SuperUserViewModel.apps.isEmpty()) {
+                LaunchedEffect(aPatchReady) {
+                    if (aPatchReady && SuperUserViewModel.apps.isEmpty()) {
                         SuperUserViewModel().fetchAppList()
                     }
                 }

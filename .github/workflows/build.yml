@@ -22,6 +22,12 @@ on:
       - 'version.properties'
   workflow_call:
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub Release with compiled APKs'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-manager:
@@ -80,43 +86,55 @@ jobs:
           ./gradlew clean assembleDebug assembleRelease
           echo "BUILD_TOOL_VERSION=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)" >> $GITHUB_ENV
 
+      - name: Prepare Signing Keystore
+        id: prepare_keystore
+        run: |
+          if [ -n "${{ secrets.SIGNING_KEY }}" ]; then
+            echo "Using provided repository signing key"
+            echo "${{ secrets.SIGNING_KEY }}" | base64 -d > "$RUNNER_TEMP/apatch-signing.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/apatch-signing.jks" >> $GITHUB_ENV
+            echo "KEY_STORE_PASSWORD=${{ secrets.KEY_STORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_ALIAS=${{ secrets.ALIAS }}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          else
+            echo "No SIGNING_KEY secret found. Generating standalone release keystore for build..."
+            keytool -genkey -v -keystore "$RUNNER_TEMP/apatch-signing.jks" \
+              -alias apatch \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "apatch123" \
+              -keypass "apatch123" \
+              -dname "CN=APatch, OU=Fork, O=APatchDev, L=City, S=State, C=US"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/apatch-signing.jks" >> $GITHUB_ENV
+            echo "KEY_STORE_PASSWORD=apatch123" >> $GITHUB_ENV
+            echo "KEY_ALIAS=apatch" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=apatch123" >> $GITHUB_ENV
+          fi
+
       - name: Sign Release (v2 only)
         id: sign_app
-        if: ${{ env.SIGNING_KEY != '' }}
-        continue-on-error: true
         env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_FILE: ${{ env.KEYSTORE_FILE }}
+          KEY_STORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
         run: |
-          echo "$SIGNING_KEY" | base64 -d > "$RUNNER_TEMP/apatch-signing.jks"
-          export KEYSTORE_FILE="$RUNNER_TEMP/apatch-signing.jks"
           SIGNED=$(bash .github/scripts/sign_v2_only.sh app/build/outputs/apk/release | tail -n 1)
           echo "signedReleaseFile=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "signedReleaseFile0=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "signedReleaseFiles=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "nofSignedReleaseFiles=1" >> "$GITHUB_OUTPUT"
 
       - name: Sign Debug APK (v2 only)
         id: sign_debug_app
-        if: ${{ env.SIGNING_KEY != '' }}
-        continue-on-error: true
         env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_FILE: ${{ env.KEYSTORE_FILE }}
+          KEY_STORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
         run: |
-          echo "$SIGNING_KEY" | base64 -d > "$RUNNER_TEMP/apatch-signing.jks"
-          export KEYSTORE_FILE="$RUNNER_TEMP/apatch-signing.jks"
           SIGNED=$(bash .github/scripts/sign_v2_only.sh app/build/outputs/apk/debug | tail -n 1)
-          echo "signedReleaseFile=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "signedReleaseFile0=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "signedReleaseFiles=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "nofSignedReleaseFiles=1" >> "$GITHUB_OUTPUT"
+          echo "signedDebugFile=$SIGNED" >> "$GITHUB_OUTPUT"
 
       - name: Upload mappings
         uses: actions/upload-artifact@v7
@@ -124,25 +142,19 @@ jobs:
           name: "mappings"
           path: "app/build/outputs/mapping/release/"
 
-      - name: Upload build artifact1
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
+      - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
           name: APatch-Release
           path: |
             ${{ steps.sign_app.outputs.signedReleaseFile }}
 
-      - name: Upload build artifact2
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v7
         with:
           name: APatch-Debug
           path: |
-            ${{ steps.sign_debug_app.outputs.signedReleaseFile }}
+            ${{ steps.sign_debug_app.outputs.signedDebugFile }}
 
       - name: Post to channel
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.ref_type != 'tag' }}
@@ -155,7 +167,7 @@ jobs:
           if [ -n "${BOT_TOKEN}" ]; then
             CHANNELS=(-1002058433411 -1001910818234 -1002312454396)
             RELEASE_APK="${{ steps.sign_app.outputs.signedReleaseFile }}"
-            DEBUG_APK="${{ steps.sign_debug_app.outputs.signedReleaseFile }}"
+            DEBUG_APK="${{ steps.sign_debug_app.outputs.signedDebugFile }}"
           
             for CHANNEL in "${CHANNELS[@]}"; do
               URL=$(python3 .github/scripts/telegram_url.py $CHANNEL)
@@ -166,15 +178,15 @@ jobs:
           fi
 
       - name: Release apk
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' && github.ref_type == 'tag' }}
+        if: ${{ github.ref_type == 'tag' || inputs.create_release == true }}
         continue-on-error: true
         uses: ncipollo/release-action@v1
         with:
           token: ${{ github.token }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: ${{steps.sign_app.outputs.signedReleaseFile}}
+          artifacts: |
+            ${{ steps.sign_app.outputs.signedReleaseFile }}
+            ${{ steps.sign_debug_app.outputs.signedDebugFile }}
           generateReleaseNotes: true
           makeLatest: true
           replacesArtifacts: true

@@ -220,6 +220,10 @@
     <string name="search_modules">Modülleri ara</string>
     <string name="settings_sucompat">Eski su uyumluluğu</string>
     <string name="settings_sucompat_summary">Enable path_probe hooks for legacy su compatibility</string>
+    <string name="settings_selinux_mode">SELinux Modu</string>
+    <string name="settings_selinux_mode_summary">SELinux durumunu Enforcing (Zorunlu) ve Permissive (Esnek) arasında değiştir</string>
+    <string name="settings_selinux_enforcing">Enforcing (Zorunlu)</string>
+    <string name="settings_selinux_permissive">Permissive (Esnek)</string>
     <string name="settings_selinux_hide">SELinux değişikliğini gizle (Test)</string>
     <string name="settings_selinux_hide_summary">SELinux değişikliklerini kullanıcı süreçleri tarafından algılanmaktan gizler (bu özellik kararsız olabilir). Güvenli mod bu özelliği devre dışı bırakabilir.</string>
     <string name="settings_selinux_hide_warning_title">Uyarı</string>

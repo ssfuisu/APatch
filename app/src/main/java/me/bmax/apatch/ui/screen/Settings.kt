@@ -94,11 +94,13 @@ import me.bmax.apatch.ui.component.rememberLoadingDialog
 import me.bmax.apatch.ui.theme.refreshTheme
 import me.bmax.apatch.util.getBugreportFile
 import me.bmax.apatch.util.getKernelVersionCode
+import me.bmax.apatch.util.getSELinuxEnforcingState
 import me.bmax.apatch.util.isGkiKernel
 import me.bmax.apatch.util.isGlobalNamespaceEnabled
 import me.bmax.apatch.util.outputStream
 import me.bmax.apatch.util.rootShellForResult
 import me.bmax.apatch.util.setGlobalNamespaceEnabled
+import me.bmax.apatch.util.setSELinuxEnforcingState
 import me.bmax.apatch.util.ui.APDialogBlurBehindUtils
 import me.bmax.apatch.util.ui.LocalSnackbarHost
 import me.bmax.apatch.util.ui.NavigationBarsSpacer
@@ -239,6 +241,42 @@ fun SettingScreen() {
                             }
                         }
                     })
+            }
+
+            // SELinux Mode Switch (Enforcing / Permissive)
+            if (kPatchReady && aPatchReady) {
+                var isSelinuxEnforcing by rememberSaveable {
+                    mutableStateOf(true)
+                }
+                var selinuxLoaded by remember { mutableStateOf(false) }
+
+                LaunchedEffect(Unit) {
+                    isSelinuxEnforcing = withContext(Dispatchers.IO) {
+                        getSELinuxEnforcingState()
+                    }
+                    selinuxLoaded = true
+                }
+
+                SwitchItem(
+                    icon = Icons.Filled.Security,
+                    title = stringResource(id = R.string.settings_selinux_mode),
+                    summary = stringResource(
+                        if (isSelinuxEnforcing) R.string.settings_selinux_enforcing
+                        else R.string.settings_selinux_permissive
+                    ),
+                    checked = isSelinuxEnforcing,
+                    enabled = selinuxLoaded,
+                    onCheckedChange = { targetState ->
+                        scope.launch(Dispatchers.IO) {
+                            val success = setSELinuxEnforcingState(targetState)
+                            if (success) {
+                                isSelinuxEnforcing = targetState
+                            } else {
+                                isSelinuxEnforcing = getSELinuxEnforcingState()
+                            }
+                        }
+                    }
+                )
             }
 
             // Hide SELinux modification (test)

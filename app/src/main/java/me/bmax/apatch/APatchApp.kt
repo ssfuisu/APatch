@@ -293,10 +293,7 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
 
         val isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
         if (!isArm64) {
-            Toast.makeText(applicationContext, "Unsupported architecture!", Toast.LENGTH_LONG)
-                .show()
-            Thread.sleep(5000)
-            exitProcess(0)
+            Log.w(TAG, "Non-arm64 architecture detected: ${Build.SUPPORTED_ABIS.joinToString()}")
         }
 
         // TODO: We can't totally protect superkey from be stolen by root or LSPosed-like injection tools in user space, the only way is don't use superkey,

@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModel
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.parcelize.Parcelize
 import me.bmax.apatch.APApplication
 import me.bmax.apatch.IAPRootService
@@ -93,24 +94,41 @@ class SuperUserViewModel : ViewModel() {
 
     private suspend inline fun connectRootService(
         crossinline onDisconnect: () -> Unit = {}
-    ): Pair<IBinder, ServiceConnection> = suspendCoroutine {
-        val connection = object : ServiceConnection {
-            override fun onServiceDisconnected(name: ComponentName?) {
-                onDisconnect()
-            }
+    ): Pair<IBinder, ServiceConnection>? = withTimeoutOrNull(4000L) {
+        suspendCoroutine { cont ->
+            var resumed = false
+            val connection = object : ServiceConnection {
+                override fun onServiceDisconnected(name: ComponentName?) {
+                    onDisconnect()
+                }
 
-            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                it.resume(binder as IBinder to this)
+                override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                    if (!resumed) {
+                        resumed = true
+                        if (binder != null) {
+                            cont.resume(binder to this)
+                        } else {
+                            cont.resume(null)
+                        }
+                    }
+                }
+            }
+            val intent = Intent(apApp, RootServices::class.java)
+            val task = RootServices.bindOrTask(
+                intent,
+                Shell.EXECUTOR,
+                connection,
+            )
+            val shell = APatchCli.SHELL
+            if (task != null) {
+                shell.execTask(task)
+            } else {
+                if (!resumed) {
+                    resumed = true
+                    cont.resume(null)
+                }
             }
         }
-        val intent = Intent(apApp, RootServices::class.java)
-        val task = RootServices.bindOrTask(
-            intent,
-            Shell.EXECUTOR,
-            connection,
-        )
-        val shell = APatchCli.SHELL
-        task?.let { it1 -> shell.execTask(it1) }
     }
 
     private fun stopRootService() {
@@ -119,11 +137,15 @@ class SuperUserViewModel : ViewModel() {
     }
 
     suspend fun fetchAppList() {
+        if (isRefreshing) return
         isRefreshing = true
 
         try {
             val result = connectRootService {
                 Log.w(TAG, "RootService disconnected")
+            } ?: run {
+                Log.w(TAG, "RootService connection timed out or unavailable")
+                return
             }
 
             withContext(Dispatchers.IO) {

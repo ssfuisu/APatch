@@ -61,3 +61,18 @@ private fun getSystemProperty(key: String): Boolean {
 fun isABDevice(): Boolean {
     return getSystemProperty("ro.build.ab_update")
 }
+
+fun getSELinuxEnforcingState(): Boolean {
+    val result = rootShellForResult("getenforce")
+    if (result.isSuccess && result.out.isNotEmpty()) {
+        val out = result.out.joinToString("\n").trim()
+        return out.equals("Enforcing", ignoreCase = true)
+    }
+    return true
+}
+
+fun setSELinuxEnforcingState(enforcing: Boolean): Boolean {
+    val cmd = if (enforcing) "setenforce 1" else "setenforce 0"
+    val result = rootShellForResult(cmd)
+    return result.isSuccess
+}
