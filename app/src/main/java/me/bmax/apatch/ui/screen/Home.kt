@@ -50,6 +50,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -330,6 +331,79 @@ private fun TopBar(
     })
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SetSuperKeyDialog(showDialog: MutableState<Boolean>) {
+    var keyText by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    BasicAlertDialog(
+        onDismissRequest = { showDialog.value = false },
+        properties = DialogProperties(
+            decorFitsSystemWindows = true,
+            usePlatformDefaultWidth = false,
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(320.dp)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = AlertDialogDefaults.TonalElevation,
+            color = AlertDialogDefaults.containerColor,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = stringResource(id = R.string.patch_set_superkey),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Text(
+                    text = stringResource(id = R.string.home_patch_set_key_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                OutlinedTextField(
+                    value = keyText,
+                    onValueChange = { keyText = it },
+                    label = { Text(stringResource(id = R.string.super_key)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { showDialog.value = false }) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = {
+                        val key = keyText.trim()
+                        if (key.isNotEmpty()) {
+                            val ready = Natives.nativeReady(key)
+                            if (ready) {
+                                me.bmax.apatch.util.APatchKeyHelper.writeSPSuperKey(key)
+                                APApplication.superKey = key
+                                showDialog.value = false
+                                Toast.makeText(context, "SuperKey Doğrulandı!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Geçersiz SuperKey!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) {
+                        Text(stringResource(android.R.string.ok))
+                    }
+                }
+            }
+            val dialogWindowProvider = LocalView.current.parent as DialogWindowProvider
+            APDialogBlurBehindUtils.setupWindowBlurListener(dialogWindowProvider.window)
+        }
+    }
+}
+
 @Composable
 private fun KStatusCard(
     kpState: APApplication.State, apState: APApplication.State, navigator: DestinationsNavigator
@@ -338,6 +412,11 @@ private fun KStatusCard(
     val showUninstallDialog = remember { mutableStateOf(false) }
     if (showUninstallDialog.value) {
         UninstallDialog(showDialog = showUninstallDialog, navigator)
+    }
+
+    val showSetSuperKeyDialog = remember { mutableStateOf(false) }
+    if (showSetSuperKeyDialog.value) {
+        SetSuperKeyDialog(showSetSuperKeyDialog)
     }
 
     // Jailbreak button appears when the kernel is not installed and SELinux is permissive.
@@ -543,6 +622,15 @@ private fun KStatusCard(
                             }
                         }
                     })
+
+                    if (kpState == APApplication.State.UNKNOWN_STATE) {
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = {
+                            showSetSuperKeyDialog.value = true
+                        }) {
+                            Text(text = stringResource(id = R.string.patch_set_superkey))
+                        }
+                    }
 
                     if (kpState == APApplication.State.UNKNOWN_STATE && isPermissive) {
                         Spacer(Modifier.height(8.dp))

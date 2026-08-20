@@ -187,35 +187,45 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
                 _apStateLiveData.value =
                     if (ready) State.ANDROIDPATCH_NOT_INSTALLED else State.UNKNOWN_STATE
                 Log.d(TAG, "state: " + _kpStateLiveData.value)
-                if (!ready) return
 
                 thread {
-                    val rc = Natives.su(0, null)
-                    if (!rc) {
-                        Log.e(TAG, "Native.su failed")
-                        return@thread
+                    var rc = if (ready) Natives.su(0, null) else false
+
+                    // If not ready via SuperCall, check if root is available via existing root shell/su
+                    if (!ready || !rc) {
+                        try {
+                            val shellRes = rootShellForResult("id")
+                            if (shellRes.isSuccess && shellRes.out.any { it.contains("uid=0") }) {
+                                Log.i(TAG, "Root shell active! Granting manager UID root permissions...")
+                                val uid = apApp.applicationInfo.uid
+                                val pkg = apApp.packageName
+                                rootShellForResult(
+                                    "echo '$pkg,0,1,$uid,0,${MAGISK_SCONTEXT}' >> $PACKAGE_CONFIG_FILE 2>/dev/null",
+                                    "killall -HUP apd 2>/dev/null"
+                                )
+                                _kpStateLiveData.postValue(State.KERNELPATCH_INSTALLED)
+                                _apStateLiveData.postValue(State.ANDROIDPATCH_INSTALLED)
+                                rc = true
+                            }
+                        } catch (e: Throwable) {
+                            Log.w(TAG, "Fallback root check: ${e.message}")
+                        }
                     }
 
-                    // KernelPatch version
-                    //val buildV = Version.buildKPVUInt()
-                    //val installedV = Version.installedKPVUInt()
-                    //use build time to check update
+                    if (!ready && !rc) return@thread
+
                     val buildV = Version.getKpImg()
                     val installedV = Version.installedKPTime()
 
-
                     Log.d(TAG, "kp installed version: ${installedV}, build version: $buildV")
 
-                    // use != instead of > to enable downgrade,
-                    if (buildV != installedV) {
+                    if (installedV.isNotEmpty() && buildV.isNotEmpty() && buildV != installedV) {
                         _kpStateLiveData.postValue(State.KERNELPATCH_NEED_UPDATE)
                     }
-                    Log.d(TAG, "kp state: " + _kpStateLiveData.value)
 
                     if (File(NEED_REBOOT_FILE).exists()) {
                         _kpStateLiveData.postValue(State.KERNELPATCH_NEED_REBOOT)
                     }
-                    Log.d(TAG, "kp state: " + _kpStateLiveData.value)
 
                     // AndroidPatch version
                     val mgv = Version.getManagerVersion().second
@@ -228,19 +238,16 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
 
                     if (Version.installedApdVInt > 0 && mgv.toInt() != Version.installedApdVInt) {
                         _apStateLiveData.postValue(State.ANDROIDPATCH_NEED_UPDATE)
-                        // su path
                         val suPathFile = File(SU_PATH_FILE)
                         if (suPathFile.exists()) {
-                            val suPath = suPathFile.readLines()[0].trim()
-                            if (Natives.suPath() != suPath) {
+                            val suPath = suPathFile.readLines().firstOrNull()?.trim() ?: ""
+                            if (suPath.isNotEmpty() && Natives.suPath() != suPath) {
                                 Log.d(TAG, "su path: $suPath")
                                 Natives.resetSuPath(suPath)
                             }
                         }
                     }
                     Log.d(TAG, "ap state: " + _apStateLiveData.value)
-
-                    return@thread
                 }
             }
 

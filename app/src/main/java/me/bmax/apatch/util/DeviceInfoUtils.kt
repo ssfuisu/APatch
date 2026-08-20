@@ -11,10 +11,14 @@ import kotlinx.coroutines.withContext
 import me.bmax.apatch.R
 
 private fun querySELinuxStatus(): Pair<Boolean, String> {
-    Shell.Builder.create().build("sh").use { shell ->
-        val list = ArrayList<String>()
-        val result = shell.newJob().add("getenforce").to(list, list).exec()
-        return result.isSuccess to result.out.joinToString("\n").trim()
+    return try {
+        Shell.Builder.create().build("sh").use { shell ->
+            val list = ArrayList<String>()
+            val result = shell.newJob().add("getenforce").to(list, list).exec()
+            result.isSuccess to result.out.joinToString("\n").trim()
+        }
+    } catch (e: Throwable) {
+        false to "Unknown"
     }
 }
 

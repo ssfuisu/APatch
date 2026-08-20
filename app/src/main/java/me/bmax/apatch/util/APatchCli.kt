@@ -94,7 +94,11 @@ private fun createMainRootShell() : Shell {
         }
     }
 
-    MainShell.setBuilder(builder)
+    try {
+        MainShell.setBuilder(builder)
+    } catch (e: Throwable) {
+        Log.w(TAG, "MainShell.setBuilder skipped: ${e.message}")
+    }
     return shell
 }
 
