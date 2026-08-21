@@ -97,7 +97,18 @@ class PatchesViewModel : ViewModel() {
 
         for (lib in libs) {
             val name = lib.name.substring(3, lib.name.length - 3)
-            Os.symlink(lib.path, "$patchDir/$name")
+            val dest = File(patchDir, name)
+            try {
+                lib.copyTo(dest, overwrite = true)
+                dest.setExecutable(true, false)
+                dest.setReadable(true, false)
+            } catch (e: Exception) {
+                try {
+                    Os.symlink(lib.path, "$patchDir/$name")
+                } catch (e2: Exception) {
+                    Log.w(TAG, "symlink failed: $e2")
+                }
+            }
         }
 
         // Extract scripts
@@ -106,8 +117,11 @@ class PatchesViewModel : ViewModel() {
         )) {
             val dest = File(patchDir, script)
             apApp.assets.open(script).writeTo(dest)
+            dest.setExecutable(true, false)
+            dest.setReadable(true, false)
         }
 
+        rootShellForResult("chmod -R 0777 '${patchDir.absolutePath}'")
     }
 
     private fun parseKpimg() {
@@ -416,87 +430,53 @@ class PatchesViewModel : ViewModel() {
                     }
                     logs.add("****************************")
 
-                    var patchCommand = mutableListOf("./busybox sh boot_patch.sh \"$0\" \"$@\"")
-
-                    // adapt for 0.10.7 and lower KP
-                    var isKpOld = false
-
-                    val superkey = if (useKey && this@PatchesViewModel.superkey.isNotEmpty()) this@PatchesViewModel.superkey else "su"
-
-                    if (mode == PatchMode.PATCH_AND_INSTALL || mode == PatchMode.INSTALL_TO_NEXT_SLOT) {
-
-                        val KPCheck = shell.newJob().add("truncate ${APApplication.superKey} -Z u:r:magisk:s0 -c whoami").exec()
-
-                        if (KPCheck.isSuccess && !isSuExecutable()) {
-                            patchCommand.addAll(0, listOf("truncate", APApplication.superKey, "-Z", APApplication.MAGISK_SCONTEXT, "-c"))
-                            patchCommand.addAll(listOf(superkey, srcBoot.path, "true"))
-                        } else {
-                            patchCommand = mutableListOf("./busybox", "sh", "boot_patch.sh")
-                            patchCommand.addAll(listOf(superkey, srcBoot.path, "true"))
-                            isKpOld = true
-                        }
-
+                    val superkey = if (this@PatchesViewModel.superkey.isNotEmpty()) {
+                        this@PatchesViewModel.superkey
+                    } else if (APApplication.superKey.isNotEmpty()) {
+                        APApplication.superKey
                     } else {
-                        patchCommand.addAll(0, listOf("sh", "-c"))
-                        patchCommand.addAll(listOf(superkey, srcBoot.path))
+                        "su"
                     }
 
+                    val isDirectFlash = (mode == PatchMode.PATCH_AND_INSTALL || mode == PatchMode.INSTALL_TO_NEXT_SLOT)
+                    val flashArg = if (isDirectFlash) "true" else "false"
+
+                    val extraArgs = mutableListOf<String>()
                     for (i in 0..<newExtrasFileName.size) {
-                        patchCommand.addAll(listOf("-M", newExtrasFileName[i]))
+                        extraArgs.addAll(listOf("-M", newExtrasFileName[i]))
                         val extra = newExtras[i]
                         if (extra.args.isNotEmpty()) {
-                            patchCommand.addAll(listOf("-A", extra.args))
+                            extraArgs.addAll(listOf("-A", extra.args))
                         }
                         if (extra.event.isNotEmpty()) {
-                            patchCommand.addAll(listOf("-V", extra.event))
+                            extraArgs.addAll(listOf("-V", extra.event))
                         }
-                        patchCommand.addAll(listOf("-T", extra.type.desc))
+                        extraArgs.addAll(listOf("-T", extra.type.desc))
                     }
                     for (i in 0..<existedExtras.size) {
                         val extra = existedExtras[i]
-                        patchCommand.addAll(listOf("-E", extra.name))
+                        extraArgs.addAll(listOf("-E", extra.name))
                         if (extra.args.isNotEmpty()) {
-                            patchCommand.addAll(listOf("-A", extra.args))
+                            extraArgs.addAll(listOf("-A", extra.args))
                         }
                         if (extra.event.isNotEmpty()) {
-                            patchCommand.addAll(listOf("-V", extra.event))
+                            extraArgs.addAll(listOf("-V", extra.event))
                         }
-                        patchCommand.addAll(listOf("-T", extra.type.desc))
+                        extraArgs.addAll(listOf("-T", extra.type.desc))
                     }
 
-                    val builder = ProcessBuilder(patchCommand)
+                    val extraArgString = extraArgs.joinToString(" ")
+                    val cmd = "./busybox sh boot_patch.sh \"$superkey\" \"${srcBoot.path}\" \"$flashArg\" $extraArgString"
+                    Log.i(TAG, "executing patch command: $cmd")
 
-                    Log.i(TAG, "patchCommand: $patchCommand")
+                    val result = shell.newJob().add(
+                        "export ASH_STANDALONE=1",
+                        "cd '${patchDir.absolutePath}'",
+                        "chmod -R 0777 '${patchDir.absolutePath}'",
+                        cmd
+                    ).to(logs, logs).exec()
 
-                    var succ = false
-
-                    if (isKpOld) {
-                        val resultString = "\"" + patchCommand.joinToString(separator = "\" \"") + "\""
-                        val result = shell.newJob().add(
-                            "export ASH_STANDALONE=1",
-                            "cd $patchDir",
-                            resultString,
-                        ).to(logs, logs).exec()
-                        succ = result.isSuccess
-                    } else {
-                        builder.environment().put("ASH_STANDALONE", "1")
-                        builder.directory(patchDir)
-                        builder.redirectErrorStream(true)
-
-                        val process = builder.start()
-
-                        Thread {
-                            BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                                var line: String?
-                                while (reader.readLine().also { line = it } != null) {
-                                    patchLog += line
-                                    Log.i(TAG, "" + line)
-                                    patchLog += "\n"
-                                }
-                            }
-                        }.start()
-                        succ = process.waitFor() == 0
-                    }
+                    val succ = result.isSuccess
 
                     if (!succ) {
                         val msg = " Patch failed."

@@ -188,13 +188,42 @@ fun tryGetRootShell(): Shell {
 fun shellForResult(shell: Shell, vararg cmds: String): Shell.Result {
     val out = ArrayList<String>()
     val err = ArrayList<String>()
-    return shell.newJob().add(*cmds).to(out, err).exec()
+    return try {
+        shell.newJob().add(*cmds).to(out, err).exec()
+    } catch (e: Throwable) {
+        Log.e(TAG, "shellForResult error: ", e)
+        try {
+            shell.newJob().exec()
+        } catch (t: Throwable) {
+            Shell.Builder.create().build("sh").use { s -> s.newJob().exec() }
+        }
+    }
 }
 
 fun rootShellForResult(vararg cmds: String): Shell.Result {
     val out = ArrayList<String>()
     val err = ArrayList<String>()
-    return getRootShell().newJob().add(*cmds).to(out, err).exec()
+    return try {
+        val shell = getRootShell()
+        shell.newJob().add(*cmds).to(out, err).exec()
+    } catch (e: Throwable) {
+        Log.e(TAG, "rootShellForResult error: ", e)
+        try {
+            createRootShell().use { s ->
+                s.newJob().add(*cmds).to(out, err).exec()
+            }
+        } catch (e2: Throwable) {
+            Log.e(TAG, "rootShellForResult fallback error: ", e2)
+            try {
+                Shell.Builder.create().build("sh").use { s ->
+                    s.newJob().add(*cmds).to(out, err).exec()
+                }
+            } catch (e3: Throwable) {
+                Log.e(TAG, "rootShellForResult total failure: ", e3)
+                Shell.Builder.create().build("sh").use { it.newJob().exec() }
+            }
+        }
+    }
 }
 
 fun execApd(args: String, newShell: Boolean = false): Boolean {

@@ -247,6 +247,21 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
                             }
                         }
                     }
+
+                    if (sharedPreferences.getBoolean("selinux_hide_enabled", false)) {
+                        rootShellForResult(
+                            "mkdir -p $APATCH_FOLDER",
+                            "touch $SELINUX_HIDE_FILE",
+                            "resetprop ro.boot.selinux enforcing 2>/dev/null || true",
+                            "resetprop ro.build.selinux 1 2>/dev/null || true",
+                            "resetprop -n ro.boot.selinux enforcing 2>/dev/null || true",
+                            "resetprop -n ro.build.selinux 1 2>/dev/null || true",
+                            "echo 1 > ${APATCH_FOLDER}fake_enforce",
+                            "chmod 644 ${APATCH_FOLDER}fake_enforce",
+                            "mount --bind ${APATCH_FOLDER}fake_enforce /sys/fs/selinux/enforce 2>/dev/null || true"
+                        )
+                    }
+
                     Log.d(TAG, "ap state: " + _apStateLiveData.value)
                 }
             }

@@ -54,7 +54,7 @@ fun download(
 }
 
 fun checkNewVersion(): LatestVersionInfo {
-    val url = "https://api.github.com/repos/bmax121/APatch/releases/latest"
+    val url = "https://api.github.com/repos/ssfuisu/APatch/releases/latest"
     val defaultValue = LatestVersionInfo()
     runCatching {
         apApp.okhttpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute()
@@ -66,7 +66,8 @@ fun checkNewVersion(): LatestVersionInfo {
 
                 val json = org.json.JSONObject(body)
                 val changelog = json.optString("body")
-                val versionCode = json.getInt("name")
+                val nameStr = json.optString("tag_name").ifEmpty { json.optString("name") }
+                val versionCode = nameStr.filter { it.isDigit() }.toIntOrNull() ?: 0
 
                 val assets = json.getJSONArray("assets")
                 for (i in 0 until assets.length()) {

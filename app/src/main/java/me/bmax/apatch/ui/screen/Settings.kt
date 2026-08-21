@@ -279,25 +279,36 @@ fun SettingScreen() {
                 )
             }
 
-            // Hide SELinux modification (test)
+            // Hide SELinux modification & Spoof Enforcing
             if (kPatchReady && aPatchReady) {
-                val kernelVersion = remember { getKernelVersionCode() }
-                val kernelSupported = (kernelVersion ?: 0) >= 419
-                val isGki = remember { isGkiKernel() }
                 var selinuxHideEnabled by rememberSaveable {
                     mutableStateOf(prefs.getBoolean("selinux_hide_enabled", false))
                 }
-                val showSelinuxHideWarning = remember { mutableStateOf(false) }
 
                 fun applySelinuxHide(enabled: Boolean) {
                     scope.launch(Dispatchers.IO) {
-                        val command = if (enabled) {
-                            "touch ${APApplication.SELINUX_HIDE_FILE}"
+                        val cmds = if (enabled) {
+                            arrayOf(
+                                "mkdir -p /data/adb/ap",
+                                "touch ${APApplication.SELINUX_HIDE_FILE}",
+                                "resetprop ro.boot.selinux enforcing 2>/dev/null || true",
+                                "resetprop ro.build.selinux 1 2>/dev/null || true",
+                                "resetprop -n ro.boot.selinux enforcing 2>/dev/null || true",
+                                "resetprop -n ro.build.selinux 1 2>/dev/null || true",
+                                "echo 1 > /data/adb/ap/fake_enforce",
+                                "chmod 644 /data/adb/ap/fake_enforce",
+                                "mount --bind /data/adb/ap/fake_enforce /sys/fs/selinux/enforce 2>/dev/null || true",
+                                "restorecon -R /data/adb/ap 2>/dev/null || true"
+                            )
                         } else {
-                            "rm -f ${APApplication.SELINUX_HIDE_FILE}"
+                            arrayOf(
+                                "rm -f ${APApplication.SELINUX_HIDE_FILE}",
+                                "umount -l /sys/fs/selinux/enforce 2>/dev/null || true",
+                                "rm -f /data/adb/ap/fake_enforce"
+                            )
                         }
-                        val result = rootShellForResult(command)
-                        Log.d("SelinuxHideToggle", "$command result: ${result.code}")
+                        val result = rootShellForResult(*cmds)
+                        Log.d("SelinuxHideToggle", "SELinux hide $enabled result: ${result.code}")
                         if (result.isSuccess) {
                             prefs.edit { putBoolean("selinux_hide_enabled", enabled) }
                             selinuxHideEnabled = enabled
@@ -310,30 +321,11 @@ fun SettingScreen() {
                     title = stringResource(id = R.string.settings_selinux_hide),
                     summary = stringResource(id = R.string.settings_selinux_hide_summary),
                     checked = selinuxHideEnabled,
-                    enabled = kernelSupported,
+                    enabled = true,
                     onCheckedChange = { enabled ->
-                        if (enabled) {
-                            // Only tested on 5.10+, and non-GKI carries a bigger risk, so warn first.
-                            val below510 = (kernelVersion ?: 0) < 510
-                            if (below510 || !isGki) {
-                                showSelinuxHideWarning.value = true
-                            } else {
-                                applySelinuxHide(true)
-                            }
-                        } else {
-                            applySelinuxHide(false)
-                        }
+                        applySelinuxHide(enabled)
                     }
                 )
-
-                if (showSelinuxHideWarning.value) {
-                    SelinuxHideWarningDialog(
-                        showDialog = showSelinuxHideWarning,
-                        kernelVersion = kernelVersion,
-                        isGki = isGki,
-                        onConfirm = { applySelinuxHide(true) },
-                    )
-                }
             }
 
             // WebView Debug

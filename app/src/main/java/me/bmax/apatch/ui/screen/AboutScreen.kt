@@ -107,7 +107,7 @@ fun AboutScreen(navigator: DestinationsNavigator) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilledTonalButton(
-                    onClick = { uriHandler.openUri("https://github.com/bmax121/APatch") }
+                    onClick = { uriHandler.openUri("https://github.com/ssfuisu/APatch") }
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.github),

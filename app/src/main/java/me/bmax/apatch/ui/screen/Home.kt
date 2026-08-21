@@ -316,7 +316,7 @@ private fun TopBar(
                             Text(stringResource(R.string.home_more_menu_feedback_or_suggestion))
                         }, onClick = {
                             showDropdownMoreOptions = false
-                            uriHandler.openUri("https://github.com/bmax121/APatch/issues/new/choose")
+                            uriHandler.openUri("https://github.com/ssfuisu/APatch/issues/new/choose")
                         })
                         DropdownMenuItem(text = {
                             Text(stringResource(R.string.home_more_menu_about))

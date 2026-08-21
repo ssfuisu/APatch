@@ -38,8 +38,8 @@
     <string name="settings_selinux_mode_summary">Toggle SELinux between Enforcing and Permissive mode</string>
     <string name="settings_selinux_enforcing">Enforcing</string>
     <string name="settings_selinux_permissive">Permissive</string>
-    <string name="settings_selinux_hide">Hide SELinux modification (Test)</string>
-    <string name="settings_selinux_hide_summary">"Hide SELinux changes from being detected by user processes (this feature may be unstable). Safe mode disables this feature."</string>
+    <string name="settings_selinux_hide">Hide SELinux modification &amp; Spoof Enforcing</string>
+    <string name="settings_selinux_hide_summary">Hide SELinux changes and spoof Enforcing mode for all apps (including /sys/fs/selinux/enforce and system properties).</string>
     <string name="settings_selinux_hide_warning_title">Warning</string>
     <string name="settings_selinux_hide_warning_below_5_10">"This feature is only tested on kernel 5.10 and above and may be unstable on lower kernel versions."</string>
     <string name="settings_selinux_hide_warning_non_gki">"Non-GKI kernels carry a higher risk and may cause boot failure. Make sure your data is backed up."</string>
