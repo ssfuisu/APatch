@@ -237,6 +237,15 @@
     <string name="settings_root_path_cloak">Kök ve Sistem Dosyalarını Gizleme</string>
     <string name="settings_root_path_cloak_summary">Root izni olmayan uygulamaların /data/adb, su ve modül dizinlerine erişimini kısıtlar ve gizler</string>
     <string name="cloaking_progress">Yeniden paketleniyor ve yükleniyor…</string>
+    <string name="online_repo_title">Çevrimiçi Modül Mağazası</string>
+    <string name="online_repo_search">Çevrimiçi modülleri ara…</string>
+    <string name="online_repo_install">Kur</string>
+    <string name="online_repo_downloading">Modül indiriliyor…</string>
+    <string name="online_repo_installed">Modül indirildi, kurulum başlatılıyor</string>
+    <string name="online_repo_category_all">Tümü</string>
+    <string name="online_repo_category_integrity">Güvenlik &amp; Bütünlük</string>
+    <string name="online_repo_category_zygisk">Zygisk &amp; Kancalar</string>
+    <string name="online_repo_category_system">Sistem &amp; İyileştirmeler</string>
     <string name="settings_selinux_hide_warning_title">Uyarı</string>
     <string name="settings_selinux_hide_warning_below_5_10">Bu özellik yalnızca 5.10 ve üzeri çekirdeklerde test edilmiştir ve daha düşük çekirdek sürümlerinde kararsız olabilir.</string>
     <string name="settings_selinux_hide_warning_non_gki">GKI olmayan çekirdekler daha büyük risk taşır ve önyükleme hatasına neden olabilir. Verilerinizin yedeklendiğinden emin olun.</string>

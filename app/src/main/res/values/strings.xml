@@ -51,6 +51,15 @@
     <string name="settings_root_path_cloak">Root &amp; System File Cloaking</string>
     <string name="settings_root_path_cloak_summary">Restrict /data/adb, su, and module directories from non-root applications</string>
     <string name="cloaking_progress">Repackaging and installing...</string>
+    <string name="online_repo_title">Online Module Store</string>
+    <string name="online_repo_search">Search online modules...</string>
+    <string name="online_repo_install">Install</string>
+    <string name="online_repo_downloading">Downloading module...</string>
+    <string name="online_repo_installed">Module downloaded, starting installation</string>
+    <string name="online_repo_category_all">All</string>
+    <string name="online_repo_category_integrity">Integrity &amp; Security</string>
+    <string name="online_repo_category_zygisk">Zygisk &amp; Hooks</string>
+    <string name="online_repo_category_system">System &amp; Tweaks</string>
     <string name="settings_selinux_hide_warning_title">Warning</string>
     <string name="settings_selinux_hide_warning_below_5_10">"This feature is only tested on kernel 5.10 and above and may be unstable on lower kernel versions."</string>
     <string name="settings_selinux_hide_warning_non_gki">"Non-GKI kernels carry a higher risk and may cause boot failure. Make sure your data is backed up."</string>
