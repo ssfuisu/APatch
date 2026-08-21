@@ -226,6 +226,17 @@
     <string name="settings_selinux_permissive">Permissive (Esnek)</string>
     <string name="settings_selinux_hide">SELinux Değişikliğini Gizle ve Enforcing Taklit Et</string>
     <string name="settings_selinux_hide_summary">SELinux durumunu ve Permissive modunu tüm uygulamalardan gizler. Dosya okumaları ve getprop kontrolleri dahil her zaman Enforcing (Zorunlu) gösterir.</string>
+    <string name="settings_hide_manager">APatch Yöneticisini Gizle</string>
+    <string name="settings_hide_manager_summary">Kök yöneticisi tespitlerini engellemek için APatch\'i rastgele bir paket adıyla yeniden paketleyip kurar</string>
+    <string name="settings_restore_manager">APatch Yöneticisini Geri Yükle</string>
+    <string name="settings_restore_manager_summary">APatch\'i orijinal paket adına (me.bmax.apatch) geri döndürür</string>
+    <string name="settings_hide_manager_dialog_title">Yöneticiyi Gizle</string>
+    <string name="settings_hide_manager_dialog_desc">Uygulama rastgele bir paket adıyla yeniden paketlenecek ve yüklenecektir. Eski paket otomatik kaldırılacaktır.</string>
+    <string name="settings_play_integrity_spoof">Play Integrity &amp; Bootloader Durumunu Gizle</string>
+    <string name="settings_play_integrity_spoof_summary">Bootloader kilit durumunu (locked) ve doğrulanmış önyüklemeyi (green) taklit ederek bankacılık ve güvenlik kontrollerini geçer</string>
+    <string name="settings_root_path_cloak">Kök ve Sistem Dosyalarını Gizleme</string>
+    <string name="settings_root_path_cloak_summary">Root izni olmayan uygulamaların /data/adb, su ve modül dizinlerine erişimini kısıtlar ve gizler</string>
+    <string name="cloaking_progress">Yeniden paketleniyor ve yükleniyor…</string>
     <string name="settings_selinux_hide_warning_title">Uyarı</string>
     <string name="settings_selinux_hide_warning_below_5_10">Bu özellik yalnızca 5.10 ve üzeri çekirdeklerde test edilmiştir ve daha düşük çekirdek sürümlerinde kararsız olabilir.</string>
     <string name="settings_selinux_hide_warning_non_gki">GKI olmayan çekirdekler daha büyük risk taşır ve önyükleme hatasına neden olabilir. Verilerinizin yedeklendiğinden emin olun.</string>

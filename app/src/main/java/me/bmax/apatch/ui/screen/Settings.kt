@@ -92,6 +92,7 @@ import me.bmax.apatch.R
 import me.bmax.apatch.ui.component.SwitchItem
 import me.bmax.apatch.ui.component.rememberLoadingDialog
 import me.bmax.apatch.ui.theme.refreshTheme
+import me.bmax.apatch.util.AppCloakUtils
 import me.bmax.apatch.util.getBugreportFile
 import me.bmax.apatch.util.getKernelVersionCode
 import me.bmax.apatch.util.getSELinuxEnforcingState
@@ -155,6 +156,11 @@ fun SettingScreen() {
         val showThemeChooseDialog = remember { mutableStateOf(false) }
         if (showThemeChooseDialog.value) {
             ThemeChooseDialog(showThemeChooseDialog)
+        }
+
+        val showHideManagerDialog = remember { mutableStateOf(false) }
+        if (showHideManagerDialog.value) {
+            HideManagerDialog(showHideManagerDialog)
         }
 
         var showLogBottomSheet by remember { mutableStateOf(false) }
@@ -324,6 +330,104 @@ fun SettingScreen() {
                     enabled = true,
                     onCheckedChange = { enabled ->
                         applySelinuxHide(enabled)
+                    }
+                )
+            }
+
+            // Play Integrity & Bootloader Spoofing
+            if (kPatchReady && aPatchReady) {
+                var playIntegritySpoof by rememberSaveable {
+                    mutableStateOf(prefs.getBoolean("play_integrity_spoof_enabled", false))
+                }
+
+                fun applyPlayIntegrity(enabled: Boolean) {
+                    scope.launch(Dispatchers.IO) {
+                        val cmds = if (enabled) {
+                            arrayOf(
+                                "resetprop -n ro.boot.verifiedbootstate green 2>/dev/null || true",
+                                "resetprop -n ro.boot.flash.locked 1 2>/dev/null || true",
+                                "resetprop -n ro.boot.vbmeta.device_state locked 2>/dev/null || true",
+                                "resetprop -n ro.boot.warranty_bit 0 2>/dev/null || true",
+                                "resetprop -n ro.warranty_bit 0 2>/dev/null || true",
+                                "resetprop -n ro.boot.veritymode enforcing 2>/dev/null || true",
+                                "resetprop -n ro.debuggable 0 2>/dev/null || true",
+                                "resetprop -n ro.secure 1 2>/dev/null || true",
+                                "resetprop -n ro.build.type user 2>/dev/null || true",
+                                "resetprop -n ro.build.tags release-keys 2>/dev/null || true",
+                                "resetprop -n vendor.boot.verifiedbootstate green 2>/dev/null || true"
+                            )
+                        } else {
+                            arrayOf()
+                        }
+                        rootShellForResult(*cmds)
+                        prefs.edit { putBoolean("play_integrity_spoof_enabled", enabled) }
+                        playIntegritySpoof = enabled
+                    }
+                }
+
+                SwitchItem(
+                    icon = Icons.Filled.Security,
+                    title = stringResource(id = R.string.settings_play_integrity_spoof),
+                    summary = stringResource(id = R.string.settings_play_integrity_spoof_summary),
+                    checked = playIntegritySpoof,
+                    onCheckedChange = { applyPlayIntegrity(it) }
+                )
+            }
+
+            // Root & System File Cloaking
+            if (kPatchReady && aPatchReady) {
+                var rootPathCloak by rememberSaveable {
+                    mutableStateOf(prefs.getBoolean("root_path_cloak_enabled", false))
+                }
+
+                fun applyRootPathCloaking(enabled: Boolean) {
+                    scope.launch(Dispatchers.IO) {
+                        val cmds = if (enabled) {
+                            arrayOf(
+                                "chmod 700 /data/adb/modules 2>/dev/null || true",
+                                "chmod 700 /data/adb/ap 2>/dev/null || true",
+                                "touch /data/adb/ap/root_cloak 2>/dev/null || true"
+                            )
+                        } else {
+                            arrayOf(
+                                "chmod 755 /data/adb/modules 2>/dev/null || true",
+                                "chmod 755 /data/adb/ap 2>/dev/null || true",
+                                "rm -f /data/adb/ap/root_cloak 2>/dev/null || true"
+                            )
+                        }
+                        rootShellForResult(*cmds)
+                        prefs.edit { putBoolean("root_path_cloak_enabled", enabled) }
+                        rootPathCloak = enabled
+                    }
+                }
+
+                SwitchItem(
+                    icon = Icons.Filled.Engineering,
+                    title = stringResource(id = R.string.settings_root_path_cloak),
+                    summary = stringResource(id = R.string.settings_root_path_cloak_summary),
+                    checked = rootPathCloak,
+                    onCheckedChange = { applyRootPathCloaking(it) }
+                )
+            }
+
+            // App Cloaking / Hide Manager
+            if (kPatchReady && aPatchReady) {
+                val isCloaked = remember { AppCloakUtils.isAppCloaked() }
+                ListItem(
+                    modifier = Modifier.clickable {
+                        showHideManagerDialog.value = true
+                    },
+                    headlineContent = {
+                        Text(stringResource(if (isCloaked) R.string.settings_restore_manager else R.string.settings_hide_manager))
+                    },
+                    supportingContent = {
+                        Text(stringResource(if (isCloaked) R.string.settings_restore_manager_summary else R.string.settings_hide_manager_summary))
+                    },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Filled.Security,
+                            contentDescription = null
+                        )
                     }
                 )
             }
@@ -854,6 +958,93 @@ fun LanguageDialog(showLanguageDialog: MutableState<Boolean>) {
                                 }
                             }
                         )
+                    }
+                }
+            }
+            val dialogWindowProvider = LocalView.current.parent as DialogWindowProvider
+            APDialogBlurBehindUtils.setupWindowBlurListener(dialogWindowProvider.window)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HideManagerDialog(showDialog: MutableState<Boolean>) {
+    val isCloaked = AppCloakUtils.isAppCloaked()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var inProgress by remember { mutableStateOf(false) }
+
+    BasicAlertDialog(
+        onDismissRequest = { if (!inProgress) showDialog.value = false },
+        properties = DialogProperties(
+            decorFitsSystemWindows = true,
+            usePlatformDefaultWidth = false,
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(320.dp)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = AlertDialogDefaults.TonalElevation,
+            color = AlertDialogDefaults.containerColor,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = stringResource(id = if (isCloaked) R.string.settings_restore_manager else R.string.settings_hide_manager),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Text(
+                    text = stringResource(id = if (isCloaked) R.string.settings_restore_manager_summary else R.string.settings_hide_manager_dialog_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                if (inProgress) {
+                    Text(
+                        text = stringResource(id = R.string.cloaking_progress),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        enabled = !inProgress,
+                        onClick = { showDialog.value = false }
+                    ) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        enabled = !inProgress,
+                        onClick = {
+                            inProgress = true
+                            scope.launch(Dispatchers.IO) {
+                                val success = if (isCloaked) {
+                                    AppCloakUtils.restoreApp()
+                                } else {
+                                    val newPkg = AppCloakUtils.generateRandomPackageName()
+                                    AppCloakUtils.cloakApp(newPkg)
+                                }
+                                withContext(Dispatchers.Main) {
+                                    inProgress = false
+                                    showDialog.value = false
+                                    if (!success) {
+                                        android.widget.Toast.makeText(context, "Operation failed", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                    ) {
+                        Text(stringResource(android.R.string.ok))
                     }
                 }
             }

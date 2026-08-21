@@ -40,6 +40,17 @@
     <string name="settings_selinux_permissive">Permissive</string>
     <string name="settings_selinux_hide">Hide SELinux modification &amp; Spoof Enforcing</string>
     <string name="settings_selinux_hide_summary">Hide SELinux changes and spoof Enforcing mode for all apps (including /sys/fs/selinux/enforce and system properties).</string>
+    <string name="settings_hide_manager">Hide APatch Manager</string>
+    <string name="settings_hide_manager_summary">Repackage and install APatch with a random package name to avoid root manager detection</string>
+    <string name="settings_restore_manager">Restore APatch Manager</string>
+    <string name="settings_restore_manager_summary">Restore APatch to the original package name (me.bmax.apatch)</string>
+    <string name="settings_hide_manager_dialog_title">Hide APatch Manager</string>
+    <string name="settings_hide_manager_dialog_desc">The app will be repackaged with a random package name and installed. The old package will be uninstalled.</string>
+    <string name="settings_play_integrity_spoof">Spoof Play Integrity &amp; Bootloader State</string>
+    <string name="settings_play_integrity_spoof_summary">Spoof verified boot state to green and bootloader to locked to pass banking and integrity checks</string>
+    <string name="settings_root_path_cloak">Root &amp; System File Cloaking</string>
+    <string name="settings_root_path_cloak_summary">Restrict /data/adb, su, and module directories from non-root applications</string>
+    <string name="cloaking_progress">Repackaging and installing...</string>
     <string name="settings_selinux_hide_warning_title">Warning</string>
     <string name="settings_selinux_hide_warning_below_5_10">"This feature is only tested on kernel 5.10 and above and may be unstable on lower kernel versions."</string>
     <string name="settings_selinux_hide_warning_non_gki">"Non-GKI kernels carry a higher risk and may cause boot failure. Make sure your data is backed up."</string>
