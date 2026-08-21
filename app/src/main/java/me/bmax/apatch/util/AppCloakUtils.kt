@@ -63,16 +63,21 @@ object AppCloakUtils {
             }
 
             // 2. Install the repackaged APK with root
-            val installRes = rootShellForResult(
-                "pm install -r -d -g '${outApk.absolutePath}'"
-            )
+            val installCmd = "pm install -r -d -g --bypass-low-target-sdk-block '${outApk.absolutePath}' 2>&1 || pm install -r -d -g '${outApk.absolutePath}' 2>&1"
+            val installRes = rootShellForResult(installCmd)
             val installOutput = (installRes.out + installRes.err).joinToString(" ")
             Log.i(TAG, "pm install output: $installOutput")
 
             if (!installOutput.contains("Success", ignoreCase = true) && !installRes.isSuccess) {
-                Log.e(TAG, "pm install failed: $installOutput")
-                outApk.delete()
-                return false
+                val fallbackRes = rootShellForResult(
+                    "cat '${outApk.absolutePath}' > /data/local/tmp/app_install.apk && pm install -r -d -g /data/local/tmp/app_install.apk 2>&1"
+                )
+                val fallbackOut = (fallbackRes.out + fallbackRes.err).joinToString(" ")
+                Log.i(TAG, "pm install fallback output: $fallbackOut")
+                if (!fallbackOut.contains("Success", ignoreCase = true) && !fallbackRes.isSuccess) {
+                    outApk.delete()
+                    return false
+                }
             }
 
             // 3. Obtain new UID and grant in package_config & transfer preferences

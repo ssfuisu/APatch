@@ -963,7 +963,7 @@ fun HideManagerDialog(showDialog: MutableState<Boolean>) {
                                     inProgress = false
                                     showDialog.value = false
                                     if (!success) {
-                                        android.widget.Toast.makeText(context, "Operation failed", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, if (isCloaked) "Restore failed" else "Cloak failed, check root permission", android.widget.Toast.LENGTH_LONG).show()
                                     }
                                 }
                             }
