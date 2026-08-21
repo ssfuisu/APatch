@@ -97,16 +97,8 @@ jobs:
             echo "KEY_ALIAS=${{ secrets.ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
           else
-            echo "No SIGNING_KEY secret found. Generating standalone release keystore for build..."
-            keytool -genkey -v -keystore "$RUNNER_TEMP/apatch-signing.jks" \
-              -alias apatch \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass "apatch123" \
-              -keypass "apatch123" \
-              -dname "CN=APatch, OU=Fork, O=APatchDev, L=City, S=State, C=US"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/apatch-signing.jks" >> $GITHUB_ENV
+            echo "Using persistent release keystore..."
+            echo "KEYSTORE_FILE=$GITHUB_WORKSPACE/.github/keystore/release.jks" >> $GITHUB_ENV
             echo "KEY_STORE_PASSWORD=apatch123" >> $GITHUB_ENV
             echo "KEY_ALIAS=apatch" >> $GITHUB_ENV
             echo "KEY_PASSWORD=apatch123" >> $GITHUB_ENV
