@@ -3,16 +3,23 @@ package me.bmax.apatch.util
 import android.util.Base64
 import android.util.Log
 import me.bmax.apatch.APApplication
+import me.bmax.apatch.Natives
 import me.bmax.apatch.apApp
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.math.BigInteger
 import java.nio.charset.StandardCharsets
+import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.PrivateKey
+import java.security.SecureRandom
 import java.security.Signature
+import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.util.Date
 import java.util.jar.Attributes
 import java.util.jar.Manifest
 import java.util.zip.ZipEntry
@@ -28,10 +35,9 @@ object AppCloakUtils {
     }
 
     fun generateRandomPackageName(): String {
-        // Must be exact 14 chars to match "me.bmax.apatch"
         val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
         val rand = (1..3).map { chars.random() }.joinToString("")
-        return "com.sys.app$rand" // total 14 chars!
+        return "com.sys.app$rand" // total 14 chars matching "me.bmax.apatch"
     }
 
     fun cloakApp(newPkgName: String): Boolean {
@@ -44,6 +50,8 @@ object AppCloakUtils {
 
     private fun repackageAndInstall(currentPkg: String, targetPkg: String): Boolean {
         try {
+            Natives.su(0, APApplication.MAGISK_SCONTEXT)
+
             val srcApk = File(apApp.applicationInfo.sourceDir)
             if (!srcApk.exists()) {
                 Log.e(TAG, "Source APK not found at ${srcApk.absolutePath}")
@@ -52,6 +60,8 @@ object AppCloakUtils {
 
             val tmpDir = File("/data/local/tmp")
             tmpDir.mkdirs()
+            rootShellForResult("chmod 777 /data/local/tmp")
+
             val outApk = File(tmpDir, "apatch_cloaked.apk")
             if (outApk.exists()) outApk.delete()
 
@@ -62,22 +72,33 @@ object AppCloakUtils {
                 return false
             }
 
-            // 2. Install the repackaged APK with root
-            val installCmd = "pm install -r -d -g --bypass-low-target-sdk-block '${outApk.absolutePath}' 2>&1 || pm install -r -d -g '${outApk.absolutePath}' 2>&1"
-            val installRes = rootShellForResult(installCmd)
-            val installOutput = (installRes.out + installRes.err).joinToString(" ")
-            Log.i(TAG, "pm install output: $installOutput")
+            // Ensure full world-readable permissions for Android package manager service
+            rootShellForResult("chmod 777 '${outApk.absolutePath}'")
 
-            if (!installOutput.contains("Success", ignoreCase = true) && !installRes.isSuccess) {
-                val fallbackRes = rootShellForResult(
-                    "cat '${outApk.absolutePath}' > /data/local/tmp/app_install.apk && pm install -r -d -g /data/local/tmp/app_install.apk 2>&1"
-                )
-                val fallbackOut = (fallbackRes.out + fallbackRes.err).joinToString(" ")
-                Log.i(TAG, "pm install fallback output: $fallbackOut")
-                if (!fallbackOut.contains("Success", ignoreCase = true) && !fallbackRes.isSuccess) {
-                    outApk.delete()
-                    return false
+            // 2. Install the repackaged APK with multi-strategy root install
+            val apkSize = outApk.length()
+            val installCmds = arrayOf(
+                "cat '${outApk.absolutePath}' | pm install -S $apkSize -r -d -g 2>&1",
+                "pm install -r -d -g --bypass-low-target-sdk-block '${outApk.absolutePath}' 2>&1",
+                "pm install -r -d -g '${outApk.absolutePath}' 2>&1",
+                "cmd package install -r -d -g '${outApk.absolutePath}' 2>&1"
+            )
+
+            var installed = false
+            for (cmd in installCmds) {
+                val res = rootShellForResult(cmd)
+                val output = (res.out + res.err).joinToString(" ")
+                Log.i(TAG, "Exec '$cmd' -> $output")
+                if (output.contains("Success", ignoreCase = true)) {
+                    installed = true
+                    break
                 }
+            }
+
+            if (!installed) {
+                Log.e(TAG, "All pm install strategies failed")
+                outApk.delete()
+                return false
             }
 
             // 3. Obtain new UID and grant in package_config & transfer preferences
@@ -112,18 +133,7 @@ object AppCloakUtils {
 
     private fun rebuildAndSignApk(srcApk: File, destApk: File, oldPkg: String, newPkg: String): Boolean {
         try {
-            val keyStore = try {
-                KeyStore.getInstance("PKCS12").apply {
-                    apApp.assets.open("release.jks").use { load(it, "apatch123".toCharArray()) }
-                }
-            } catch (e: Exception) {
-                KeyStore.getInstance("JKS").apply {
-                    apApp.assets.open("release.jks").use { load(it, "apatch123".toCharArray()) }
-                }
-            }
-
-            val privateKey = keyStore.getKey("apatch", "apatch123".toCharArray()) as PrivateKey
-            val cert = keyStore.getCertificate("apatch") as X509Certificate
+            val (privateKey, cert) = loadSigningKeyAndCert()
 
             val zipFile = ZipFile(srcApk)
             val zos = ZipOutputStream(FileOutputStream(destApk))
@@ -220,6 +230,43 @@ object AppCloakUtils {
             Log.e(TAG, "rebuildAndSignApk error: ", e)
             return false
         }
+    }
+
+    private fun loadSigningKeyAndCert(): Pair<PrivateKey, X509Certificate> {
+        try {
+            val keyStore = try {
+                KeyStore.getInstance("PKCS12").apply {
+                    apApp.assets.open("release.jks").use { load(it, "apatch123".toCharArray()) }
+                }
+            } catch (e: Exception) {
+                KeyStore.getInstance("JKS").apply {
+                    apApp.assets.open("release.jks").use { load(it, "apatch123".toCharArray()) }
+                }
+            }
+            val pk = keyStore.getKey("apatch", "apatch123".toCharArray()) as PrivateKey
+            val c = keyStore.getCertificate("apatch") as X509Certificate
+            return pk to c
+        } catch (e: Exception) {
+            Log.w(TAG, "Keystore asset load fallback to runtime generator: ${e.message}")
+            val kpg = KeyPairGenerator.getInstance("RSA")
+            kpg.initialize(2048, SecureRandom())
+            val pair = kpg.generateKeyPair()
+
+            // Generate self-signed cert DER
+            val certBytes = createSelfSignedCertDer(pair.public.encoded)
+            val certFactory = CertificateFactory.getInstance("X.509")
+            val cert = certFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
+            return pair.private to cert
+        }
+    }
+
+    private fun createSelfSignedCertDer(publicKeyDer: ByteArray): ByteArray {
+        val serial = derWrap(0x02, byteArrayOf(0x01))
+        val algId = derSeq(derWrap(0x06, byteArrayOf(0x2A, 0x86.toByte(), 0x48, 0x86.toByte(), 0xF7.toByte(), 0x0D, 0x01, 0x01, 0x05)), byteArrayOf(0x05, 0x00))
+        val name = derSeq(derSet(derSeq(derWrap(0x06, byteArrayOf(0x55, 0x04, 0x03)), derWrap(0x0C, "APatch".toByteArray()))))
+        val validity = derSeq(derWrap(0x17, "200101000000Z".toByteArray()), derWrap(0x17, "500101000000Z".toByteArray()))
+        val tbs = derSeq(serial, algId, name, validity, name, publicKeyDer)
+        return derSeq(tbs, algId, derWrap(0x03, byteArrayOf(0x00, 0x01)))
     }
 
     private fun derLength(len: Int): ByteArray {

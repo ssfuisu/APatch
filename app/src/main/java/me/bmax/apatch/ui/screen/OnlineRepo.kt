@@ -1,6 +1,5 @@
 package me.bmax.apatch.ui.screen
 
-import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -23,16 +22,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,12 +39,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,6 +66,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.bmax.apatch.R
 import me.bmax.apatch.apApp
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.net.URI
 
@@ -80,91 +80,12 @@ data class OnlineModule(
     val downloadUrl: String,
     val sourceUrl: String,
     val category: String,
+    val stars: Int = 0,
     val type: MODULE_TYPE = MODULE_TYPE.APM
 )
 
-private val curatedModules = listOf(
-    OnlineModule(
-        id = "playintegrityfix",
-        name = "Play Integrity Fix",
-        author = "chiteroman",
-        version = "v18.5",
-        description = "Fixes Google Play Integrity verdicts to pass BASIC and DEVICE integrity on rooted devices.",
-        downloadUrl = "https://github.com/chiteroman/PlayIntegrityFix/releases/latest/download/PlayIntegrityFix.zip",
-        sourceUrl = "https://github.com/chiteroman/PlayIntegrityFix",
-        category = "Integrity"
-    ),
-    OnlineModule(
-        id = "zygisk-next",
-        name = "Zygisk-Next",
-        author = "Dr-TSNG",
-        version = "v1.2.5",
-        description = "Standalone Zygisk implementation for KernelSU and APatch with high compatibility.",
-        downloadUrl = "https://github.com/Dr-TSNG/ZygiskNext/releases/latest/download/Zygisk-Next.zip",
-        sourceUrl = "https://github.com/Dr-TSNG/ZygiskNext",
-        category = "Zygisk"
-    ),
-    OnlineModule(
-        id = "shamiko",
-        name = "Shamiko",
-        author = "LSPosed Devs",
-        version = "v1.1.1",
-        description = "Zygisk module to hide root, zygisk and modules from banking and sensitive apps.",
-        downloadUrl = "https://github.com/LSPosed/Shamiko/releases/latest/download/Shamiko.zip",
-        sourceUrl = "https://github.com/LSPosed/Shamiko",
-        category = "Integrity"
-    ),
-    OnlineModule(
-        id = "trickystore",
-        name = "Tricky Store",
-        author = "5ec1cff",
-        version = "v1.2.0",
-        description = "A trick for keystore hardware attestation to pass STRONG_INTEGRITY verdicts.",
-        downloadUrl = "https://github.com/5ec1cff/TrickyStore/releases/latest/download/TrickyStore.zip",
-        sourceUrl = "https://github.com/5ec1cff/TrickyStore",
-        category = "Integrity"
-    ),
-    OnlineModule(
-        id = "lsposed-zygisk",
-        name = "LSPosed (Zygisk)",
-        author = "LSPosed",
-        version = "v1.9.3",
-        description = "The modern Xposed framework implementation for Android with Zygisk support.",
-        downloadUrl = "https://github.com/LSPosed/LSPosed/releases/latest/download/LSPosed-v1.9.3-7244-zygisk-release.zip",
-        sourceUrl = "https://github.com/LSPosed/LSPosed",
-        category = "Zygisk"
-    ),
-    OnlineModule(
-        id = "systemless-hosts",
-        name = "Systemless Hosts",
-        author = "APatch",
-        version = "1.0",
-        description = "Provides a systemless /system/etc/hosts file for AdAway and content blocking.",
-        downloadUrl = "https://github.com/gloeyq/systemless-hosts/releases/latest/download/systemless-hosts.zip",
-        sourceUrl = "https://github.com/gloeyq/systemless-hosts",
-        category = "System"
-    ),
-    OnlineModule(
-        id = "busybox-ndk",
-        name = "Busybox for Android NDK",
-        author = "osm0sis",
-        version = "1.36.1",
-        description = "Static busybox binaries built with Android NDK for all architectures.",
-        downloadUrl = "https://github.com/Magisk-Modules-Repo/busybox-ndk/releases/latest/download/busybox-ndk.zip",
-        sourceUrl = "https://github.com/Magisk-Modules-Repo/busybox-ndk",
-        category = "System"
-    ),
-    OnlineModule(
-        id = "bootloader-spoofer",
-        name = "Bootloader Spoofer",
-        author = "chiteroman",
-        version = "v1.1",
-        description = "Spoofs bootloader locked state in kernel and user properties.",
-        downloadUrl = "https://github.com/chiteroman/BootloaderSpoofer/releases/latest/download/BootloaderSpoofer.zip",
-        sourceUrl = "https://github.com/chiteroman/BootloaderSpoofer",
-        category = "Integrity"
-    )
-)
+private const val API_V2_URL = "https://raw.githubusercontent.com/Magisk-Modules-Alt-Repo/json-v2/main/json/modules.json"
+private const val API_V1_URL = "https://raw.githubusercontent.com/Magisk-Modules-Alt-Repo/json/main/modules.json"
 
 @Destination<RootGraph>
 @OptIn(ExperimentalMaterial3Api::class)
@@ -172,19 +93,140 @@ private val curatedModules = listOf(
 fun OnlineRepoScreen(navigator: DestinationsNavigator) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
-    val categories = listOf("All", "Integrity", "Zygisk", "System")
+    val categories = listOf("All", "Security", "Zygisk", "System", "Audio", "UI")
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
-    var downloadingId by remember { mutableStateOf<String?>(null) }
 
-    val filteredModules = remember(searchQuery, selectedCategory) {
-        curatedModules.filter { module ->
+    var isLoading by remember { mutableStateOf(true) }
+    var downloadingId by remember { mutableStateOf<String?>(null) }
+    val modulesList = remember { mutableStateListOf<OnlineModule>() }
+
+    fun fetchModules() {
+        scope.launch(Dispatchers.IO) {
+            isLoading = true
+            val fetched = mutableListOf<OnlineModule>()
+            try {
+                // 1. Try V2 API
+                val req = Request.Builder().url(API_V2_URL).build()
+                apApp.okhttpClient.newCall(req).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val rootJson = JSONObject(body)
+                        val modulesArray = rootJson.optJSONArray("modules")
+                        if (modulesArray != null) {
+                            for (i in 0 until modulesArray.length()) {
+                                val item = modulesArray.optJSONObject(i) ?: continue
+                                val id = item.optString("id", "")
+                                val name = item.optString("name", id).ifBlank { id }
+                                val author = item.optString("author", "Unknown")
+                                val version = item.optString("version", "1.0")
+                                val description = item.optString("description", "")
+                                val stars = item.optInt("stars", 0)
+                                val support = item.optString("support", "https://github.com/Magisk-Modules-Alt-Repo/$id")
+
+                                var downloadUrl = ""
+                                val versionsArray = item.optJSONArray("versions")
+                                if (versionsArray != null && versionsArray.length() > 0) {
+                                    val firstVer = versionsArray.optJSONObject(0)
+                                    downloadUrl = firstVer?.optString("zipUrl", "") ?: ""
+                                }
+
+                                if (downloadUrl.isBlank()) {
+                                    downloadUrl = "https://github.com/Magisk-Modules-Alt-Repo/$id/archive/main.zip"
+                                }
+
+                                val catLower = (name + " " + description + " " + id).lowercase()
+                                val category = when {
+                                    catLower.contains("integrity") || catLower.contains("hide") || catLower.contains("shamiko") || catLower.contains("root") || catLower.contains("security") || catLower.contains("protect") -> "Security"
+                                    catLower.contains("zygisk") || catLower.contains("xposed") || catLower.contains("hook") || catLower.contains("lsposed") -> "Zygisk"
+                                    catLower.contains("audio") || catLower.contains("sound") || catLower.contains("music") || catLower.contains("volume") -> "Audio"
+                                    catLower.contains("font") || catLower.contains("icon") || catLower.contains("ui") || catLower.contains("theme") || catLower.contains("blur") -> "UI"
+                                    else -> "System"
+                                }
+
+                                fetched.add(
+                                    OnlineModule(
+                                        id = id,
+                                        name = name,
+                                        author = author,
+                                        version = version,
+                                        description = description,
+                                        downloadUrl = downloadUrl,
+                                        sourceUrl = support,
+                                        category = category,
+                                        stars = stars
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("OnlineRepo", "V2 API failed: ", e)
+            }
+
+            // Fallback to V1 API if V2 was empty
+            if (fetched.isEmpty()) {
+                try {
+                    val req = Request.Builder().url(API_V1_URL).build()
+                    apApp.okhttpClient.newCall(req).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val body = response.body?.string() ?: ""
+                            val rootJson = JSONObject(body)
+                            val modulesArray = rootJson.optJSONArray("modules")
+                            if (modulesArray != null) {
+                                for (i in 0 until modulesArray.length()) {
+                                    val item = modulesArray.optJSONObject(i) ?: continue
+                                    val id = item.optString("id", "")
+                                    val stars = item.optInt("stars", 0)
+                                    val zipUrl = item.optString("zip_url", "")
+                                    val sourceUrl = "https://github.com/Magisk-Modules-Alt-Repo/$id"
+
+                                    fetched.add(
+                                        OnlineModule(
+                                            id = id,
+                                            name = id,
+                                            author = "Community",
+                                            version = "Latest",
+                                            description = "Magisk / APatch module from Alt-Repo",
+                                            downloadUrl = zipUrl,
+                                            sourceUrl = sourceUrl,
+                                            category = "System",
+                                            stars = stars
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } catch (e2: Exception) {
+                    Log.e("OnlineRepo", "V1 API failed: ", e2)
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                modulesList.clear()
+                // Sort by stars descending
+                fetched.sortByDescending { it.stars }
+                modulesList.addAll(fetched)
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        fetchModules()
+    }
+
+    val filteredModules = remember(searchQuery, selectedCategory, modulesList.size) {
+        modulesList.filter { module ->
             (selectedCategory == "All" || module.category.equals(selectedCategory, ignoreCase = true)) &&
             (searchQuery.isBlank() ||
              module.name.contains(searchQuery, ignoreCase = true) ||
              module.author.contains(searchQuery, ignoreCase = true) ||
-             module.description.contains(searchQuery, ignoreCase = true))
+             module.description.contains(searchQuery, ignoreCase = true) ||
+             module.id.contains(searchQuery, ignoreCase = true))
         }
     }
 
@@ -195,6 +237,11 @@ fun OnlineRepoScreen(navigator: DestinationsNavigator) {
                 navigationIcon = {
                     IconButton(onClick = { navigator.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { fetchModules() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                     }
                 }
             )
@@ -233,55 +280,72 @@ fun OnlineRepoScreen(navigator: DestinationsNavigator) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(filteredModules, key = { it.id }) { module ->
-                    OnlineModuleCard(
-                        module = module,
-                        isDownloading = downloadingId == module.id,
-                        onInstallClick = {
-                            downloadingId = module.id
-                            scope.launch(Dispatchers.IO) {
-                                try {
-                                    val cacheDir = File(context.cacheDir, "modules")
-                                    cacheDir.mkdirs()
-                                    val targetFile = File(cacheDir, "${module.id}.zip")
-                                    if (targetFile.exists()) targetFile.delete()
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Fetching live module repository...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(filteredModules, key = { it.id }) { module ->
+                        OnlineModuleCard(
+                            module = module,
+                            isDownloading = downloadingId == module.id,
+                            onInstallClick = {
+                                downloadingId = module.id
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        val cacheDir = File(context.cacheDir, "modules")
+                                        cacheDir.mkdirs()
+                                        val targetFile = File(cacheDir, "${module.id}.zip")
+                                        if (targetFile.exists()) targetFile.delete()
 
-                                    val conn = URI.create(module.downloadUrl).toURL().openConnection()
-                                    conn.connectTimeout = 15000
-                                    conn.readTimeout = 60000
-                                    conn.getInputStream().use { input ->
-                                        targetFile.outputStream().use { output ->
-                                            input.copyTo(output)
+                                        val conn = URI.create(module.downloadUrl).toURL().openConnection()
+                                        conn.connectTimeout = 20000
+                                        conn.readTimeout = 60000
+                                        conn.getInputStream().use { input ->
+                                            targetFile.outputStream().use { output ->
+                                                input.copyTo(output)
+                                            }
+                                        }
+
+                                        withContext(Dispatchers.Main) {
+                                            downloadingId = null
+                                            val uri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                targetFile
+                                            )
+                                            navigator.navigate(InstallScreenDestination(uri, module.type))
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("OnlineRepo", "Download failed: ", e)
+                                        withContext(Dispatchers.Main) {
+                                            downloadingId = null
+                                            Toast.makeText(context, "Download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                                         }
                                     }
-
-                                    withContext(Dispatchers.Main) {
-                                        downloadingId = null
-                                        val uri = FileProvider.getUriForFile(
-                                            context,
-                                            "${context.packageName}.fileprovider",
-                                            targetFile
-                                        )
-                                        navigator.navigate(InstallScreenDestination(uri, module.type))
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e("OnlineRepo", "Download failed: ", e)
-                                    withContext(Dispatchers.Main) {
-                                        downloadingId = null
-                                        Toast.makeText(context, "Download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                                    }
                                 }
+                            },
+                            onSourceClick = {
+                                uriHandler.openUri(module.sourceUrl)
                             }
-                        },
-                        onSourceClick = {
-                            uriHandler.openUri(module.sourceUrl)
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -325,16 +389,34 @@ fun OnlineModuleCard(
                     )
                 }
 
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text(module.category) }
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (module.stars > 0) {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = "Stars",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${module.stars}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    SuggestionChip(
+                        onClick = {},
+                        label = { Text(module.category) }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = module.description,
+                text = module.description.ifBlank { "No description available." },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
