@@ -33,6 +33,7 @@ import me.bmax.apatch.util.copyAndClose
 import me.bmax.apatch.util.copyAndCloseOut
 import me.bmax.apatch.util.createRootShell
 import me.bmax.apatch.util.inputStream
+import me.bmax.apatch.util.rootShellForResult
 import me.bmax.apatch.util.shellForResult
 import me.bmax.apatch.util.writeTo
 import org.ini4j.Ini
@@ -476,7 +477,7 @@ class PatchesViewModel : ViewModel() {
                         cmd
                     ).to(logs, logs).exec()
 
-                    val succ = result.isSuccess
+                    var succ = result.isSuccess
 
                     if (!succ) {
                         val msg = " Patch failed."
