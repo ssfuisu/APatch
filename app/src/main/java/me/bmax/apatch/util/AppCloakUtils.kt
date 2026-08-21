@@ -7,7 +7,6 @@ import me.bmax.apatch.apApp
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -53,7 +52,7 @@ object AppCloakUtils {
 
             val tmpDir = File("/data/local/tmp")
             tmpDir.mkdirs()
-            val outApk = File(tmpDir, "apatch_repackaged.apk")
+            val outApk = File(tmpDir, "apatch_cloaked.apk")
             if (outApk.exists()) outApk.delete()
 
             // 1. Rebuild and Sign APK with new package name
@@ -67,9 +66,9 @@ object AppCloakUtils {
             val installRes = rootShellForResult(
                 "pm install -r -d -g '${outApk.absolutePath}'"
             )
-            Log.i(TAG, "pm install output: ${installRes.out} ${installRes.err}")
-
             val installOutput = (installRes.out + installRes.err).joinToString(" ")
+            Log.i(TAG, "pm install output: $installOutput")
+
             if (!installOutput.contains("Success", ignoreCase = true) && !installRes.isSuccess) {
                 Log.e(TAG, "pm install failed: $installOutput")
                 outApk.delete()
@@ -108,10 +107,15 @@ object AppCloakUtils {
 
     private fun rebuildAndSignApk(srcApk: File, destApk: File, oldPkg: String, newPkg: String): Boolean {
         try {
-            val keyStore = KeyStore.getInstance("JKS")
-            val ksStream = apApp.assets.open("release.jks")
-            keyStore.load(ksStream, "apatch123".toCharArray())
-            ksStream.close()
+            val keyStore = try {
+                KeyStore.getInstance("PKCS12").apply {
+                    apApp.assets.open("release.jks").use { load(it, "apatch123".toCharArray()) }
+                }
+            } catch (e: Exception) {
+                KeyStore.getInstance("JKS").apply {
+                    apApp.assets.open("release.jks").use { load(it, "apatch123".toCharArray()) }
+                }
+            }
 
             val privateKey = keyStore.getKey("apatch", "apatch123".toCharArray()) as PrivateKey
             val cert = keyStore.getCertificate("apatch") as X509Certificate
@@ -128,38 +132,35 @@ object AppCloakUtils {
             val oldPkgU16 = oldPkg.toByteArray(StandardCharsets.UTF_16LE)
             val newPkgU16 = newPkg.toByteArray(StandardCharsets.UTF_16LE)
 
+            val entryMap = LinkedHashMap<String, ByteArray>()
             val entries = zipFile.entries()
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
                 val name = entry.name
 
-                // Skip existing signature files
-                if (name.startsWith("META-INF/") && (name.endsWith(".SF") || name.endsWith(".RSA") || name.endsWith(".DSA") || name.endsWith(".MF"))) {
+                // Skip old signature files
+                if (name.startsWith("META-INF/") && (name.endsWith(".SF") || name.endsWith(".RSA") || name.endsWith(".DSA") || name.endsWith(".MF") || name.endsWith(".EC"))) {
                     continue
                 }
 
+                val raw = zipFile.getInputStream(entry).readBytes()
                 val entryBytes = if (name == "AndroidManifest.xml") {
-                    val raw = zipFile.getInputStream(entry).readBytes()
                     replaceBytes(raw, oldPkgBytes, newPkgBytes)
                     replaceBytes(raw, oldPkgU16, newPkgU16)
                     raw
                 } else {
-                    zipFile.getInputStream(entry).readBytes()
+                    raw
                 }
+                entryMap[name] = entryBytes
 
-                // Add to manifest
                 val digest = Base64.encodeToString(md.digest(entryBytes), Base64.NO_WRAP)
                 val attr = Attributes()
                 attr[Attributes.Name("SHA-256-Digest")] = digest
                 manifest.entries[name] = attr
-
-                val newEntry = ZipEntry(name)
-                zos.putNextEntry(newEntry)
-                zos.write(entryBytes)
-                zos.closeEntry()
             }
+            zipFile.close()
 
-            // Write META-INF/MANIFEST.MF
+            // 1. Write META-INF/MANIFEST.MF first
             val mfBaos = ByteArrayOutputStream()
             manifest.write(mfBaos)
             val mfBytes = mfBaos.toByteArray()
@@ -169,17 +170,16 @@ object AppCloakUtils {
             zos.write(mfBytes)
             zos.closeEntry()
 
-            // Write META-INF/CERT.SF
+            // 2. Write META-INF/CERT.SF
             val sfBaos = ByteArrayOutputStream()
-            sfBaos.write("Signature-Version: 1.0\r\n".toByteArray(StandardCharsets.UTF_8))
-            sfBaos.write("Created-By: 1.0 (APatch)\r\n".toByteArray(StandardCharsets.UTF_8))
-            sfBaos.write("SHA-256-Digest-Manifest: ${Base64.encodeToString(md.digest(mfBytes), Base64.NO_WRAP)}\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
+            sfBaos.write("Signature-Version: 1.0\r\nCreated-By: 1.0 (APatch)\r\n".toByteArray(StandardCharsets.UTF_8))
+            val mfDigest = Base64.encodeToString(md.digest(mfBytes), Base64.NO_WRAP)
+            sfBaos.write("SHA-256-Digest-Manifest: $mfDigest\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
 
             for ((entryName, attr) in manifest.entries) {
-                val entryMfChunk = "Name: $entryName\r\nSHA-256-Digest: ${attr.getValue("SHA-256-Digest")}\r\n\r\n".toByteArray(StandardCharsets.UTF_8)
-                val chunkDigest = Base64.encodeToString(md.digest(entryMfChunk), Base64.NO_WRAP)
-                sfBaos.write("Name: $entryName\r\n".toByteArray(StandardCharsets.UTF_8))
-                sfBaos.write("SHA-256-Digest: $chunkDigest\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
+                val chunk = "Name: $entryName\r\nSHA-256-Digest: ${attr.getValue("SHA-256-Digest")}\r\n\r\n".toByteArray(StandardCharsets.UTF_8)
+                val chunkDigest = Base64.encodeToString(md.digest(chunk), Base64.NO_WRAP)
+                sfBaos.write("Name: $entryName\r\nSHA-256-Digest: $chunkDigest\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
             }
             val sfBytes = sfBaos.toByteArray()
 
@@ -188,21 +188,28 @@ object AppCloakUtils {
             zos.write(sfBytes)
             zos.closeEntry()
 
-            // Write META-INF/CERT.RSA (Signature Block)
+            // 3. Write META-INF/CERT.RSA (Valid PKCS#7 block)
             val signer = Signature.getInstance("SHA256withRSA")
             signer.initSign(privateKey)
             signer.update(sfBytes)
             val signatureBytes = signer.sign()
 
-            // Create PKCS#7 block wrapping cert and signature
+            val rsaBytes = createPkcs7Block(cert, signatureBytes)
             val rsaEntry = ZipEntry("META-INF/CERT.RSA")
             zos.putNextEntry(rsaEntry)
-            zos.write(createPkcs7Block(cert, signatureBytes))
+            zos.write(rsaBytes)
             zos.closeEntry()
+
+            // 4. Write all APK contents
+            for ((name, bytes) in entryMap) {
+                val newEntry = ZipEntry(name)
+                zos.putNextEntry(newEntry)
+                zos.write(bytes)
+                zos.closeEntry()
+            }
 
             zos.flush()
             zos.close()
-            zipFile.close()
             return true
         } catch (e: Throwable) {
             Log.e(TAG, "rebuildAndSignApk error: ", e)
@@ -210,11 +217,62 @@ object AppCloakUtils {
         }
     }
 
-    private fun createPkcs7Block(cert: X509Certificate, signature: ByteArray): ByteArray {
+    private fun derLength(len: Int): ByteArray {
+        return when {
+            len < 128 -> byteArrayOf(len.toByte())
+            len < 256 -> byteArrayOf(0x81.toByte(), len.toByte())
+            len < 65536 -> byteArrayOf(0x82.toByte(), (len shr 8).toByte(), (len and 0xFF).toByte())
+            else -> byteArrayOf(0x83.toByte(), (len shr 16).toByte(), ((len shr 8) and 0xFF).toByte(), (len and 0xFF).toByte())
+        }
+    }
+
+    private fun derWrap(tag: Int, data: ByteArray): ByteArray {
+        val len = derLength(data.size)
+        val res = ByteArray(1 + len.size + data.size)
+        res[0] = tag.toByte()
+        System.arraycopy(len, 0, res, 1, len.size)
+        System.arraycopy(data, 0, res, 1 + len.size, data.size)
+        return res
+    }
+
+    private fun derSeq(vararg items: ByteArray): ByteArray {
         val baos = ByteArrayOutputStream()
-        baos.write(cert.encoded)
-        baos.write(signature)
-        return baos.toByteArray()
+        for (item in items) baos.write(item)
+        return derWrap(0x30, baos.toByteArray())
+    }
+
+    private fun derSet(vararg items: ByteArray): ByteArray {
+        val baos = ByteArrayOutputStream()
+        for (item in items) baos.write(item)
+        return derWrap(0x31, baos.toByteArray())
+    }
+
+    private fun createPkcs7Block(cert: X509Certificate, signature: ByteArray): ByteArray {
+        val oidSignedData = derWrap(0x06, byteArrayOf(0x2A, 0x86.toByte(), 0x48, 0x86.toByte(), 0xF7.toByte(), 0x0D, 0x01, 0x07, 0x02))
+        val oidData = derWrap(0x06, byteArrayOf(0x2A, 0x86.toByte(), 0x48, 0x86.toByte(), 0xF7.toByte(), 0x0D, 0x01, 0x07, 0x01))
+        val oidSha256 = derWrap(0x06, byteArrayOf(0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01))
+        val oidRsa = derWrap(0x06, byteArrayOf(0x2A, 0x86.toByte(), 0x48, 0x86.toByte(), 0xF7.toByte(), 0x0D, 0x01, 0x01, 0x01))
+        val derNull = byteArrayOf(0x05, 0x00)
+
+        val version = byteArrayOf(0x02, 0x01, 0x01)
+        val algId = derSeq(oidSha256, derNull)
+        val digestAlgorithms = derSet(algId)
+        val encapContentInfo = derSeq(oidData)
+        val certsTagged = derWrap(0xA0, cert.encoded)
+
+        val signerVersion = byteArrayOf(0x02, 0x01, 0x01)
+        val issuer = cert.issuerX500Principal.encoded
+        val serial = derWrap(0x02, cert.serialNumber.toByteArray())
+        val issuerAndSerial = derSeq(issuer, serial)
+        val digestAlg = derSeq(oidSha256, derNull)
+        val digestEncAlg = derSeq(oidRsa, derNull)
+        val encDigest = derWrap(0x04, signature)
+
+        val signerInfo = derSeq(signerVersion, issuerAndSerial, digestAlg, digestEncAlg, encDigest)
+        val signerInfos = derSet(signerInfo)
+
+        val signedData = derSeq(version, digestAlgorithms, encapContentInfo, certsTagged, signerInfos)
+        return derSeq(oidSignedData, derWrap(0xA0, signedData))
     }
 
     private fun replaceBytes(source: ByteArray, target: ByteArray, replacement: ByteArray) {

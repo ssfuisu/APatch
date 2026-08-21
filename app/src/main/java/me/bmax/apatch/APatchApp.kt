@@ -278,29 +278,27 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
                         )
                     }
 
-                    if (sharedPreferences.getBoolean("play_integrity_spoof_enabled", false)) {
-                        rootShellForResult(
-                            "resetprop -n ro.boot.verifiedbootstate green 2>/dev/null || true",
-                            "resetprop -n ro.boot.flash.locked 1 2>/dev/null || true",
-                            "resetprop -n ro.boot.vbmeta.device_state locked 2>/dev/null || true",
-                            "resetprop -n ro.boot.warranty_bit 0 2>/dev/null || true",
-                            "resetprop -n ro.warranty_bit 0 2>/dev/null || true",
-                            "resetprop -n ro.boot.veritymode enforcing 2>/dev/null || true",
-                            "resetprop -n ro.debuggable 0 2>/dev/null || true",
-                            "resetprop -n ro.secure 1 2>/dev/null || true",
-                            "resetprop -n ro.build.type user 2>/dev/null || true",
-                            "resetprop -n ro.build.tags release-keys 2>/dev/null || true",
-                            "resetprop -n vendor.boot.verifiedbootstate green 2>/dev/null || true"
-                        )
-                    }
+                    // Embedded Play Integrity & Bootloader Spoofing (Always active)
+                    rootShellForResult(
+                        "resetprop -n ro.boot.verifiedbootstate green 2>/dev/null || true",
+                        "resetprop -n ro.boot.flash.locked 1 2>/dev/null || true",
+                        "resetprop -n ro.boot.vbmeta.device_state locked 2>/dev/null || true",
+                        "resetprop -n ro.boot.warranty_bit 0 2>/dev/null || true",
+                        "resetprop -n ro.warranty_bit 0 2>/dev/null || true",
+                        "resetprop -n ro.boot.veritymode enforcing 2>/dev/null || true",
+                        "resetprop -n ro.debuggable 0 2>/dev/null || true",
+                        "resetprop -n ro.secure 1 2>/dev/null || true",
+                        "resetprop -n ro.build.type user 2>/dev/null || true",
+                        "resetprop -n ro.build.tags release-keys 2>/dev/null || true",
+                        "resetprop -n vendor.boot.verifiedbootstate green 2>/dev/null || true"
+                    )
 
-                    if (sharedPreferences.getBoolean("root_path_cloak_enabled", false)) {
-                        rootShellForResult(
-                            "chmod 700 /data/adb/modules 2>/dev/null || true",
-                            "chmod 700 /data/adb/ap 2>/dev/null || true",
-                            "touch /data/adb/ap/root_cloak 2>/dev/null || true"
-                        )
-                    }
+                    // Embedded Root & System File Cloaking (Always active)
+                    rootShellForResult(
+                        "chmod 700 /data/adb/modules 2>/dev/null || true",
+                        "chmod 700 /data/adb/ap 2>/dev/null || true",
+                        "touch /data/adb/ap/root_cloak 2>/dev/null || true"
+                    )
 
                     Log.d(TAG, "ap state: " + _apStateLiveData.value)
                 }
