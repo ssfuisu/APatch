@@ -185,10 +185,16 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
                 _kpStateLiveData.value =
                     if (ready) State.KERNELPATCH_INSTALLED else State.UNKNOWN_STATE
                 _apStateLiveData.value =
-                    if (ready) State.ANDROIDPATCH_NOT_INSTALLED else State.UNKNOWN_STATE
+                    if (ready) State.ANDROIDPATCH_INSTALLED else State.UNKNOWN_STATE
                 Log.d(TAG, "state: " + _kpStateLiveData.value)
 
                 thread {
+                    try {
+                        APatchCli.refresh()
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "APatchCli.refresh error: ", e)
+                    }
+
                     var rc = if (ready) Natives.su(0, null) else false
 
                     // If not ready via SuperCall, check if root is available via existing root shell/su
@@ -212,7 +218,10 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
                         }
                     }
 
-                    if (!ready && !rc) return@thread
+                    if (!ready && !rc) {
+                        _apStateLiveData.postValue(State.UNKNOWN_STATE)
+                        return@thread
+                    }
 
                     val buildV = Version.getKpImg()
                     val installedV = Version.installedKPTime()
@@ -227,24 +236,31 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
                         _kpStateLiveData.postValue(State.KERNELPATCH_NEED_REBOOT)
                     }
 
-                    // AndroidPatch version
-                    val mgv = Version.getManagerVersion().second
-                    val installedApdVInt = Version.installedApdVUInt()
-                    Log.d(TAG, "manager version: $mgv, installed apd version: $installedApdVInt")
+                    val apdFile = File(APD_PATH)
+                    val apdExists = apdFile.exists() || rootShellForResult("[ -f $APD_PATH ]").isSuccess
 
-                    if (Version.installedApdVInt > 0) {
+                    if (apdExists || Version.installedApdVUInt() > 0) {
                         _apStateLiveData.postValue(State.ANDROIDPATCH_INSTALLED)
+
+                        val mgv = Version.getManagerVersion().second
+                        val installedApdVInt = Version.installedApdVUInt()
+                        Log.d(TAG, "manager version: $mgv, installed apd version: $installedApdVInt")
+
+                        // If apd is outdated, update it in background seamlessly
+                        if (installedApdVInt in 1 until mgv.toInt()) {
+                            Log.i(TAG, "Auto-updating apd daemon to version $mgv...")
+                            installApatch()
+                        }
+                    } else {
+                        _apStateLiveData.postValue(State.ANDROIDPATCH_NOT_INSTALLED)
                     }
 
-                    if (Version.installedApdVInt > 0 && mgv.toInt() != Version.installedApdVInt) {
-                        _apStateLiveData.postValue(State.ANDROIDPATCH_NEED_UPDATE)
-                        val suPathFile = File(SU_PATH_FILE)
-                        if (suPathFile.exists()) {
-                            val suPath = suPathFile.readLines().firstOrNull()?.trim() ?: ""
-                            if (suPath.isNotEmpty() && Natives.suPath() != suPath) {
-                                Log.d(TAG, "su path: $suPath")
-                                Natives.resetSuPath(suPath)
-                            }
+                    val suPathFile = File(SU_PATH_FILE)
+                    if (suPathFile.exists()) {
+                        val suPath = suPathFile.readLines().firstOrNull()?.trim() ?: ""
+                        if (suPath.isNotEmpty() && Natives.suPath() != suPath) {
+                            Log.d(TAG, "su path: $suPath")
+                            Natives.resetSuPath(suPath)
                         }
                     }
 
