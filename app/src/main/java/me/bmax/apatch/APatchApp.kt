@@ -313,6 +313,14 @@ class APApplication : Application(), Thread.UncaughtExceptionHandler {
         }
         apApp = this
 
+        runCatching {
+            com.topjohnwu.superuser.Shell.setDefaultBuilder(
+                com.topjohnwu.superuser.Shell.Builder.create()
+                    .setFlags(com.topjohnwu.superuser.Shell.FLAG_MOUNT_MASTER)
+                    .setTimeout(10)
+            )
+        }
+
         val isArm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
         if (!isArm64) {
             Log.w(TAG, "Non-arm64 architecture detected: ${Build.SUPPORTED_ABIS.joinToString()}")

@@ -113,16 +113,24 @@ class SuperUserViewModel : ViewModel() {
                     }
                 }
             }
-            val intent = Intent(apApp, RootServices::class.java)
-            val task = RootServices.bindOrTask(
-                intent,
-                Shell.EXECUTOR,
-                connection,
-            )
-            val shell = APatchCli.SHELL
-            if (task != null) {
-                shell.execTask(task)
-            } else {
+            try {
+                val intent = Intent(apApp, RootServices::class.java)
+                val task = RootServices.bindOrTask(
+                    intent,
+                    Shell.EXECUTOR,
+                    connection,
+                )
+                val shell = me.bmax.apatch.util.getRootShell()
+                if (task != null && shell.isAlive) {
+                    shell.execTask(task)
+                } else {
+                    if (!resumed) {
+                        resumed = true
+                        cont.resume(null)
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "connectRootService error", e)
                 if (!resumed) {
                     resumed = true
                     cont.resume(null)
